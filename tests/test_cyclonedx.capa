@@ -63,12 +63,18 @@ fun run(stdio: Stdio, text: String) -> Int
         None    -> f = check(stdio, f, "Fs component present", false)
         Some(c) -> f = check_eq(stdio, f, "Fs kind", component_kind(c), "builtin-capability")
 
-    // capability_map mirrors the per-function queries
+    // capability_map mirrors the per-function queries, keyed
+    // by the unique bom-ref (names may repeat across modules)
     let cmap = capability_map(doc)
-    let main_caps = match cmap.get("main")
+    let main_caps = match cmap.get("capa:fn:demo_program.capa:main")
         Some(xs) -> joined(xs)
         None     -> "<missing>"
-    f = check_eq(stdio, f, "capability_map(main)", main_caps, "Stdio, Fs")
+    f = check_eq(stdio, f, "capability_map(main ref)", main_caps, "Stdio, Fs")
+
+    // find_by_ref resolves the same unique key
+    match find_by_ref(doc, "capa:fn:demo_program.capa:load_name")
+        None    -> f = check(stdio, f, "find_by_ref hit", false)
+        Some(c) -> f = check_eq(stdio, f, "find_by_ref hit", c.name, "load_name")
 
     // Relations: the dep-graph edge from main to the Fs builtin
     f = check(stdio, f, "relation main->Fs", has_relation(doc,

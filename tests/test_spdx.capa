@@ -70,6 +70,13 @@ fun run(stdio: Stdio, text: String) -> Int
         "SPDXRef-Package-demo-program.capa", "DEPENDS_ON",
         "SPDXRef-Builtin-demo-program.capa-Fs"))
 
+    // capability_map is keyed by the unique SPDXID
+    let cmap = capability_map(doc)
+    let main_caps = match cmap.get("SPDXRef-Fn-demo-program.capa-main")
+        Some(xs) -> joined(xs)
+        None     -> "<missing>"
+    f = check_eq(stdio, f, "capability_map(main SPDXID)", main_caps, "Stdio, Fs")
+
     // Summary agrees with the CycloneDX view of the same program
     let s = summarize(doc)
     f = check(stdio, f, "summary.function_count", s.function_count == 4)

@@ -18,9 +18,21 @@ import capa_sbom.model
 // Lookups
 // =========================================================
 
+// First component with this display name, in document order.
+// Names are not unique in multi-module programs (two modules
+// can both define `main`); when you need a unique key, use
+// `find_by_ref` with the component's `ref_id`.
 pub fun find_by_name(doc: Document, name: String) -> Option<Component>
     for c in doc.components
         if c.name == name
+            return Some(c)
+    return None
+
+// Lookup by the document-unique identifier: the CycloneDX
+// bom-ref / SPDX SPDXID. This is the key `Relation` edges use.
+pub fun find_by_ref(doc: Document, ref_id: String) -> Option<Component>
+    for c in doc.components
+        if c.ref_id == ref_id
             return Some(c)
     return None
 
@@ -80,13 +92,15 @@ pub fun declared_capabilities(c: Component) -> List<String>
 pub fun reachable_capabilities(c: Component) -> List<String>
     return property_values(c, "capa:transitively_reachable_capability")
 
-// Function name -> declared capabilities, for every function
-// component in the document. The audit-policy comparison most
-// consumers run starts from exactly this map.
+// ref_id -> declared capabilities, for every function
+// component in the document. Keyed by `ref_id` (not name)
+// because names are not unique in multi-module programs; the
+// audit-policy comparison most consumers run starts from
+// exactly this map.
 pub fun capability_map(doc: Document) -> Map<String, List<String>>
     var out: Map<String, List<String>> = new_map()
     for c in functions(doc)
-        out.set(c.name, declared_capabilities(c))
+        out.set(c.ref_id, declared_capabilities(c))
     return out
 
 // =========================================================

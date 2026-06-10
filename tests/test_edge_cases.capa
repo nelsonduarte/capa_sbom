@@ -95,6 +95,10 @@ fun check_absence(stdio: Stdio, f0: Int) -> Int
         None    -> true
         Some(_) -> false
     f = check(stdio, f, "cdx: lookup misses on bare", missing)
+    let missing_ref = match find_by_ref(bare, "capa:fn:x:y")
+        None    -> true
+        Some(_) -> false
+    f = check(stdio, f, "cdx: ref lookup misses on bare", missing_ref)
 
     let bare_spdx = match parse_spdx("{\"spdxVersion\": \"SPDX-2.3\", \"name\": \"empty-doc\"}")
         Ok(d)  -> d

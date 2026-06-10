@@ -124,6 +124,12 @@ helpers the parsers share (`json_string`, `json_array`,
 ### Queries (from `capa_sbom.query`)
 
 - `pub fun find_by_name(doc, name) -> Option<Component>`
+  (first match in document order; names are **not** unique in
+  multi-module programs, so use `find_by_ref` when you need a
+  unique key)
+- `pub fun find_by_ref(doc, ref_id) -> Option<Component>`
+  (lookup by the document-unique CycloneDX bom-ref / SPDX
+  SPDXID, the same key `Relation` edges use)
 - `pub fun find_by_purl(doc, purl) -> Option<Component>`
   (an empty-string probe never matches)
 - `pub fun property_values(c, name) -> List<String>`
@@ -135,6 +141,7 @@ helpers the parsers share (`json_string`, `json_array`,
 - `pub fun declared_capabilities(c) -> List<String>`
 - `pub fun reachable_capabilities(c) -> List<String>`
 - `pub fun capability_map(doc) -> Map<String, List<String>>`
+  (keyed by `ref_id`, the unique identifier, not by name)
 - `pub type Summary { component_count, function_count,
   functions_with_capabilities, relation_count: Int }`
 - `pub fun summarize(doc) -> Summary`
@@ -153,10 +160,17 @@ variants split cleanly:
 | `NotSbom` | valid JSON, wrong document kind | missing `bomFormat`, array root |
 | `Malformed` | right kind, wrong shape | `"components": 7` |
 
-One caveat: the message *inside* `InvalidJson` is produced by
-the host JSON engine and its wording differs between Capa's
-Python and Wasm backends. Match on the variant; do not compare
-that message text.
+Capa's `parse_json` is strict RFC 8259 with cross-backend
+parity (control characters, large strings, unicode escapes,
+trailing data, number grammar, constants, nesting depth and
+negative zero all behave identically on the Python and Wasm
+backends). Two known differences remain, both compiler-side:
+the message *inside* `InvalidJson` is worded differently per
+backend by design, so match on the variant and do not compare
+that text; and scientific-notation number formatting is a
+pending compiler TODO, which this library never observes
+because everything it lifts from an SBOM is strings, arrays
+and objects.
 
 Format-specific notes:
 
@@ -200,7 +214,7 @@ of the same program.
 ## Tests
 
 Three deterministic test programs under [`tests/`](./tests/)
-(83 assertions): the real CycloneDX and SPDX fixtures, the
+(86 assertions): the real CycloneDX and SPDX fixtures, the
 error channel, empty documents, a generic third-party SBOM with
 no `capa:*` properties, purl lookups, and SPDX annotation
 decoding. From the repository root:
@@ -212,8 +226,11 @@ CAPA_PATH=.. capa --run tests/test_edge_cases.capa
 ```
 
 Each prints one `ok <name>` line per assertion and a final
-`RESULT:` line. All three run byte-identically on both backends
-(`capa --run` and `capa --wasm --run`).
+`RESULT:` line. All three suites pass with byte-identical
+output on both backends (`capa --run` and `capa --wasm --run`);
+they assert on error variants rather than the `InvalidJson`
+message text, which is the one thing that still differs between
+backends (see Parsing rules).
 
 ## Audit claim
 
@@ -225,6 +242,7 @@ empty claim about itself. `capa --manifest` over every module:
 parse_cyclonedx:          []
 parse_spdx:               []
 find_by_name:             []
+find_by_ref:              []
 find_by_purl:             []
 property_values:          []
 first_property:           []
