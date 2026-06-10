@@ -1,0 +1,8 @@
+# capa-sbom package manifest. The library is pure Capa with zero
+# dependencies; this file exists so `capa install` consumers and
+# tooling can read the package identity.
+
+[package]
+name = "capa_sbom"
+version = "0.1.0"
+capa = ">=0.8.4"
