@@ -1,0 +1,115 @@
+// libraries/capa_sbom/spdx.capa
+//
+// SPDX 2.x JSON parser: String -> Result<Document, SbomError>.
+// Zero capabilities; same contract as the CycloneDX module.
+//
+// What v0.1 lifts from the document:
+//   - spdxVersion (must start with "SPDX-"), document name
+//   - packages[]: SPDXID, name, versionInfo, purl (from
+//     externalRefs with referenceType "purl"), and annotation
+//     comments of the form `name=value` as Properties (this is
+//     where the Capa compiler puts its capa:* facts)
+//   - relationships[]: one Relation per entry, kind is the
+//     relationshipType verbatim (DEPENDS_ON, CONTAINS, ...)
+// Files, snippets, extracted licensing info, and the SPDX 3.0
+// graph remodelling are intentionally not modelled yet.
+
+import capa_sbom.model
+
+// =========================================================
+// Entry point
+// =========================================================
+
+pub fun parse_spdx(text: String) -> Result<Document, SbomError>
+    let root = match parse_json(text)
+        Ok(v)  -> v
+        Err(e) -> return Err(InvalidJson(e))
+    let obj = match root.as_object()
+        Some(m) -> m
+        None    -> return Err(NotSbom("top-level JSON value is not an object"))
+
+    let version = json_string(obj, "spdxVersion", "document")?
+    if not version.starts_with("SPDX-")
+        return Err(NotSbom("spdxVersion is '${version}' (expected 'SPDX-...')"))
+    let subject = json_string(obj, "name", "document")?
+
+    var components: List<Component> = []
+    for pkg_jv in json_array(obj, "packages", "document")?
+        components.push(parse_package(pkg_jv)?)
+
+    var relations: List<Relation> = []
+    for rel_jv in json_array(obj, "relationships", "document")?
+        let rel = expect_object(rel_jv, "relationships entry")?
+        relations.push(Relation {
+            from_ref: json_string(rel, "spdxElementId", "relationship")?,
+            kind: json_string(rel, "relationshipType", "relationship")?,
+            to_ref: json_string(rel, "relatedSpdxElement", "relationship")?
+        })
+
+    return Ok(Document {
+        format: Spdx,
+        spec_version: version,
+        subject: subject,
+        components: components,
+        relations: relations
+    })
+
+// =========================================================
+// Packages
+// =========================================================
+
+fun parse_package(jv: JsonValue) -> Result<Component, SbomError>
+    let pkg = expect_object(jv, "packages entry")?
+    return Ok(Component {
+        ref_id: json_string(pkg, "SPDXID", "package")?,
+        name: json_string(pkg, "name", "package")?,
+        version: json_string(pkg, "versionInfo", "package")?,
+        purl: extract_purl(pkg)?,
+        properties: extract_annotation_properties(pkg)?
+    })
+
+// SPDX carries purls in externalRefs[] entries whose
+// referenceType is "purl". First match wins; "" if none.
+fun extract_purl(pkg: Map<String, JsonValue>) -> Result<String, SbomError>
+    for ref_jv in json_array(pkg, "externalRefs", "package")?
+        let ext = expect_object(ref_jv, "package.externalRefs entry")?
+        if json_string(ext, "referenceType", "externalRef")? == "purl"
+            return Ok(json_string(ext, "referenceLocator", "externalRef")?)
+    return Ok("")
+
+// SPDX has no properties[]; the Capa compiler (and other
+// producers) encode name/value pairs as annotation comments,
+// `capa:kind=function` style. Comments containing '=' become
+// Properties (split on the first '='; the value keeps any
+// further '=' characters). Comments without '=' are free-form
+// prose, not metadata pairs, and are skipped.
+fun extract_annotation_properties(pkg: Map<String, JsonValue>) -> Result<List<Property>, SbomError>
+    var out: List<Property> = []
+    for ann_jv in json_array(pkg, "annotations", "package")?
+        let ann = expect_object(ann_jv, "package.annotations entry")?
+        let comment = json_string(ann, "comment", "annotation")?
+        match split_pair(comment)
+            None    -> ()
+            Some(p) -> out.push(p)
+    return Ok(out)
+
+// "a=b=c" -> Property { name: "a", value: "b=c" }; None when
+// the string has no '='.
+fun split_pair(s: String) -> Option<Property>
+    if not s.contains("=")
+        return None
+    let parts = s.split("=")
+    let name = match parts.first()
+        Some(n) -> n
+        None    -> return None
+    var value = ""
+    var i = 1
+    while i < parts.length()
+        let piece = match parts.get(i)
+            Some(p) -> p
+            None    -> ""
+        value = match i == 1
+            true  -> piece
+            false -> "${value}=${piece}"
+        i = i + 1
+    return Some(Property { name: name, value: value })

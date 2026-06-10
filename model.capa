@@ -1,0 +1,135 @@
+// libraries/capa_sbom/model.capa
+//
+// Common typed model for parsed SBOMs, shared by the CycloneDX
+// and SPDX parsers, plus the typed error channel and the JSON
+// extraction helpers both parsers build on. Zero capabilities:
+// everything here is pure data and pure functions.
+//
+// The model is deliberately format-agnostic. A CycloneDX
+// component and an SPDX package both become a `Component`; a
+// CycloneDX dependency edge and an SPDX relationship both
+// become a `Relation`. Format-specific vocabulary (bom-ref vs
+// SPDXID, properties vs annotations) is normalised by the
+// parsers so query code is written once.
+
+// =========================================================
+// Public types
+// =========================================================
+
+pub type SbomFormat =
+    CycloneDx
+    Spdx
+
+pub fun format_name(f: SbomFormat) -> String
+    return match f
+        CycloneDx -> "CycloneDX"
+        Spdx      -> "SPDX"
+
+// A single name/value metadata pair on a component. CycloneDX
+// stores these in `properties[]`; SPDX encodes them as
+// annotation comments of the form `name=value`. Capa's
+// compiler emits its capability facts here under the `capa:`
+// namespace (capa:kind, capa:pos, capa:declared_capability,
+// capa:transitively_reachable_capability, ...).
+pub type Property {
+    name: String,
+    value: String
+}
+
+// One component (CycloneDX `components[]` entry) or package
+// (SPDX `packages[]` entry). Absent optional fields are the
+// empty string; `properties` is empty when the document
+// carries no metadata pairs for the entry.
+pub type Component {
+    ref_id: String,       // CycloneDX bom-ref / SPDX SPDXID
+    name: String,
+    version: String,
+    purl: String,
+    properties: List<Property>
+}
+
+// One edge of the document's dependency / relationship graph.
+// For CycloneDX, `kind` is always "depends-on" (one Relation
+// per `dependsOn` target). For SPDX, `kind` is the
+// relationshipType verbatim (DEPENDS_ON, CONTAINS, DESCRIBES).
+pub type Relation {
+    from_ref: String,
+    kind: String,
+    to_ref: String
+}
+
+// A parsed SBOM. `subject` is the name of the thing the
+// document describes (CycloneDX metadata.component.name; SPDX
+// document name). `spec_version` is "1.5" for CycloneDX and
+// the verbatim "SPDX-2.3" for SPDX.
+pub type Document {
+    format: SbomFormat,
+    spec_version: String,
+    subject: String,
+    components: List<Component>,
+    relations: List<Relation>
+}
+
+// Typed error channel. The split matters to consumers:
+//   InvalidJson - the text is not JSON at all
+//   NotSbom     - valid JSON, but not the expected document
+//                 kind (wrong/missing bomFormat or spdxVersion,
+//                 or a non-object top level)
+//   Malformed   - recognisably the right document kind, but a
+//                 field has the wrong JSON type where the spec
+//                 requires another
+pub type SbomError =
+    InvalidJson(String)
+    NotSbom(String)
+    Malformed(String)
+
+pub fun error_message(e: SbomError) -> String
+    return match e
+        InvalidJson(m) -> "invalid JSON: ${m}"
+        NotSbom(m)     -> "not an SBOM: ${m}"
+        Malformed(m)   -> "malformed SBOM: ${m}"
+
+// =========================================================
+// JSON extraction helpers
+// =========================================================
+//
+// Strictness rule, used uniformly by both parsers: a missing
+// field falls back to a neutral default (empty string / empty
+// list / empty object), but a present field of the wrong JSON
+// type is a `Malformed` error. Lenient about absence, strict
+// about shape.
+
+pub fun json_string(obj: Map<String, JsonValue>, key: String, context: String) -> Result<String, SbomError>
+    match obj.get(key)
+        None     -> return Ok("")
+        Some(jv) ->
+            match jv.as_string()
+                Some(s) -> return Ok(s)
+                None    -> return Err(Malformed("expected string for ${context}.${key}"))
+
+pub fun json_array(obj: Map<String, JsonValue>, key: String, context: String) -> Result<List<JsonValue>, SbomError>
+    match obj.get(key)
+        None     ->
+            let empty: List<JsonValue> = []
+            return Ok(empty)
+        Some(jv) ->
+            match jv.as_array()
+                Some(xs) -> return Ok(xs)
+                None     -> return Err(Malformed("expected array for ${context}.${key}"))
+
+pub fun json_object(obj: Map<String, JsonValue>, key: String, context: String) -> Result<Map<String, JsonValue>, SbomError>
+    match obj.get(key)
+        None     ->
+            let empty: Map<String, JsonValue> = new_map()
+            return Ok(empty)
+        Some(jv) ->
+            match jv.as_object()
+                Some(m) -> return Ok(m)
+                None    -> return Err(Malformed("expected object for ${context}.${key}"))
+
+// For array elements, where there is no enclosing key: the
+// value itself must be an object.
+pub fun expect_object(jv: JsonValue, context: String) -> Result<Map<String, JsonValue>, SbomError>
+    match jv.as_object()
+        Some(m) -> return Ok(m)
+        None    -> return Err(Malformed("expected object for ${context}"))

@@ -1,0 +1,116 @@
+// libraries/capa_sbom/query.capa
+//
+// Queries over the parsed `Document`, written once for both
+// formats. Zero capabilities: every function is a pure read
+// over the model.
+//
+// The capa:* helpers are the reason this library exists. A
+// Capa-emitted SBOM carries one component per function, with
+// the function's capability facts as `capa:` properties; the
+// helpers below answer the questions a downstream auditor
+// actually asks ("which functions exist?", "what does this
+// function declare?", "what can it transitively reach?")
+// without the consumer hand-rolling property scans.
+
+import capa_sbom.model
+
+// =========================================================
+// Lookups
+// =========================================================
+
+pub fun find_by_name(doc: Document, name: String) -> Option<Component>
+    for c in doc.components
+        if c.name == name
+            return Some(c)
+    return None
+
+pub fun find_by_purl(doc: Document, purl: String) -> Option<Component>
+    for c in doc.components
+        if c.purl != "" and c.purl == purl
+            return Some(c)
+    return None
+
+// =========================================================
+// Properties
+// =========================================================
+
+// Every value of the named property, in document order. A
+// property may legitimately repeat (capa:declared_capability
+// appears once per capability).
+pub fun property_values(c: Component, name: String) -> List<String>
+    var out: List<String> = []
+    for p in c.properties
+        if p.name == name
+            out.push(p.value)
+    return out
+
+pub fun first_property(c: Component, name: String) -> Option<String>
+    for p in c.properties
+        if p.name == name
+            return Some(p.value)
+    return None
+
+// =========================================================
+// capa:* capability facts
+// =========================================================
+
+// The capa:kind of a component: "function",
+// "builtin-capability", "capability", or "" when the producer
+// was not the Capa compiler.
+pub fun component_kind(c: Component) -> String
+    return match first_property(c, "capa:kind")
+        Some(k) -> k
+        None    -> ""
+
+// Components that represent functions of the described
+// program, in document order.
+pub fun functions(doc: Document) -> List<Component>
+    var out: List<Component> = []
+    for c in doc.components
+        if component_kind(c) == "function"
+            out.push(c)
+    return out
+
+// Capabilities the function declares in its signature.
+pub fun declared_capabilities(c: Component) -> List<String>
+    return property_values(c, "capa:declared_capability")
+
+// Capabilities the function transitively reaches through its
+// call graph (a superset of the declared set by construction).
+pub fun reachable_capabilities(c: Component) -> List<String>
+    return property_values(c, "capa:transitively_reachable_capability")
+
+// Function name -> declared capabilities, for every function
+// component in the document. The audit-policy comparison most
+// consumers run starts from exactly this map.
+pub fun capability_map(doc: Document) -> Map<String, List<String>>
+    var out: Map<String, List<String>> = new_map()
+    for c in functions(doc)
+        out.set(c.name, declared_capabilities(c))
+    return out
+
+// =========================================================
+// Summary
+// =========================================================
+
+pub type Summary {
+    component_count: Int,
+    function_count: Int,
+    functions_with_capabilities: Int,
+    relation_count: Int
+}
+
+pub fun summarize(doc: Document) -> Summary
+    var function_count = 0
+    var with_caps = 0
+    for c in doc.components
+        if component_kind(c) == "function"
+            function_count = function_count + 1
+            if not declared_capabilities(c).is_empty()
+                with_caps = with_caps + 1
+    return Summary {
+        component_count: doc.components.length(),
+        function_count: function_count,
+        functions_with_capabilities: with_caps,
+        relation_count: doc.relations.length()
+    }

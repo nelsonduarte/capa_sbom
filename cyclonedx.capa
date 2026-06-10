@@ -1,0 +1,85 @@
+// libraries/capa_sbom/cyclonedx.capa
+//
+// CycloneDX 1.x JSON parser: String -> Result<Document,
+// SbomError>. Zero capabilities; the caller reads the file
+// (or fetches the bytes) with whatever authority it has and
+// hands this module a plain String.
+//
+// What v0.1 lifts from the document:
+//   - bomFormat (must be "CycloneDX"), specVersion
+//   - metadata.component.name as the document subject
+//   - components[]: bom-ref, name, version, purl, properties[]
+//   - dependencies[]: one Relation per (ref, dependsOn) pair,
+//     kind "depends-on"
+// Everything else (licenses, hashes, vulnerabilities/VEX,
+// compositions, services) is intentionally not modelled yet.
+
+import capa_sbom.model
+
+// =========================================================
+// Entry point
+// =========================================================
+
+pub fun parse_cyclonedx(text: String) -> Result<Document, SbomError>
+    let root = match parse_json(text)
+        Ok(v)  -> v
+        Err(e) -> return Err(InvalidJson(e))
+    let obj = match root.as_object()
+        Some(m) -> m
+        None    -> return Err(NotSbom("top-level JSON value is not an object"))
+
+    let fmt = json_string(obj, "bomFormat", "document")?
+    if fmt != "CycloneDX"
+        return Err(NotSbom("bomFormat is '${fmt}' (expected 'CycloneDX')"))
+    let spec_version = json_string(obj, "specVersion", "document")?
+
+    let metadata = json_object(obj, "metadata", "document")?
+    let meta_component = json_object(metadata, "component", "metadata")?
+    let subject = json_string(meta_component, "name", "metadata.component")?
+
+    var components: List<Component> = []
+    for comp_jv in json_array(obj, "components", "document")?
+        components.push(parse_component(comp_jv)?)
+
+    var relations: List<Relation> = []
+    for dep_jv in json_array(obj, "dependencies", "document")?
+        let dep = expect_object(dep_jv, "dependencies entry")?
+        let from_ref = json_string(dep, "ref", "dependency")?
+        for target_jv in json_array(dep, "dependsOn", "dependency")?
+            let to_ref = match target_jv.as_string()
+                Some(s) -> s
+                None    -> return Err(Malformed("expected string in dependency.dependsOn"))
+            relations.push(Relation {
+                from_ref: from_ref,
+                kind: "depends-on",
+                to_ref: to_ref
+            })
+
+    return Ok(Document {
+        format: CycloneDx,
+        spec_version: spec_version,
+        subject: subject,
+        components: components,
+        relations: relations
+    })
+
+// =========================================================
+// Components
+// =========================================================
+
+fun parse_component(jv: JsonValue) -> Result<Component, SbomError>
+    let comp = expect_object(jv, "components entry")?
+    var properties: List<Property> = []
+    for prop_jv in json_array(comp, "properties", "component")?
+        let prop = expect_object(prop_jv, "component.properties entry")?
+        properties.push(Property {
+            name: json_string(prop, "name", "property")?,
+            value: json_string(prop, "value", "property")?
+        })
+    return Ok(Component {
+        ref_id: json_string(comp, "bom-ref", "component")?,
+        name: json_string(comp, "name", "component")?,
+        version: json_string(comp, "version", "component")?,
+        purl: json_string(comp, "purl", "component")?,
+        properties: properties
+    })
