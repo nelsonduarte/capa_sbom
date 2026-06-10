@@ -1,0 +1,33 @@
+// data/demo_program.capa
+//
+// The Capa program whose SBOMs are committed next to this file
+// as test fixtures. Regenerate them from the repository root
+// with the Capa compiler:
+//
+//     capa --cyclonedx data/demo_program.capa > data/demo.cdx.json
+//     capa --spdx      data/demo_program.capa > data/demo.spdx.json
+//
+// The program is deliberately tiny but capability-diverse: one
+// pure function, one Stdio-only function, one Fs-only function,
+// and a main that holds both. That gives the fixtures a
+// non-trivial capa:declared_capability spread to assert on.
+
+type Greeting {
+    who: String,
+    text: String
+}
+
+fun build_greeting(who: String) -> Greeting
+    return Greeting { who: who, text: "hello, ${who}" }
+
+fun emit(stdio: Stdio, g: Greeting)
+    stdio.println(g.text)
+
+fun load_name(fs: Fs, path: String) -> String
+    return match fs.read(path)
+        Ok(s)  -> s.trim()
+        Err(_) -> "world"
+
+fun main(stdio: Stdio, fs: Fs)
+    let name = load_name(fs, "name.txt")
+    emit(stdio, build_greeting(name))

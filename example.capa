@@ -1,0 +1,88 @@
+// libraries/capa_sbom/example.capa
+//
+// Walkthrough of capa-sbom's surface against the real
+// compiler-emitted SBOMs committed under data/ (see
+// data/demo_program.capa for their provenance).
+//
+// The library itself is pure; the only capability here is the
+// example's own: Fs to read the fixture files, Stdio to print.
+//
+// Run from the repository root, with the parent directory on
+// the module search path:
+//
+//     CAPA_PATH=.. capa --run example.capa
+
+import capa_sbom.model
+import capa_sbom.cyclonedx
+import capa_sbom.spdx
+import capa_sbom.query
+
+// Render a list as "a, b, c" ("none" when empty).
+fun join(xs: List<String>) -> String
+    if xs.is_empty()
+        return "none"
+    var out = ""
+    var first = true
+    for x in xs
+        if first
+            out = x
+            first = false
+        else
+            out = "${out}, ${x}"
+    return out
+
+// The whole point of a Capa SBOM in one loop: every function
+// of the described program, with its declared capability set.
+fun show_document(stdio: Stdio, doc: Document)
+    let s = summarize(doc)
+    stdio.println("${format_name(doc.format)} ${doc.spec_version} describing '${doc.subject}'")
+    stdio.println("  components: ${s.component_count}  functions: ${s.function_count}  with capabilities: ${s.functions_with_capabilities}  relations: ${s.relation_count}")
+    for f in functions(doc)
+        stdio.println("  fun ${f.name}: declares { ${join(declared_capabilities(f))} }, reaches { ${join(reachable_capabilities(f))} }")
+
+fun show_parsed(stdio: Stdio, label: String, parsed: Result<Document, SbomError>)
+    stdio.println("--- ${label} ---")
+    match parsed
+        Ok(doc) -> show_document(stdio, doc)
+        // The message inside InvalidJson comes from the host
+        // JSON engine and its wording differs between backends;
+        // match on the variant and keep the demo output stable.
+        Err(InvalidJson(_)) -> stdio.println("  error: invalid JSON")
+        Err(e)              -> stdio.println("  error: ${error_message(e)}")
+    stdio.println("")
+
+fun main(stdio: Stdio, fs: Fs)
+    // Attenuate the Fs before reading: the example only needs
+    // the fixture directory.
+    let scoped = fs.restrict_to("data/")
+
+    // The same program, described by both formats. The queries
+    // run over the common model, so the answers line up.
+    match scoped.read("data/demo.cdx.json")
+        Err(e) -> stdio.eprintln("cannot read fixture: ${e}")
+        Ok(text) -> show_parsed(stdio, "CycloneDX fixture", parse_cyclonedx(text))
+
+    match scoped.read("data/demo.spdx.json")
+        Err(e) -> stdio.eprintln("cannot read fixture: ${e}")
+        Ok(text) ->
+            let parsed = parse_spdx(text)
+            show_parsed(stdio, "SPDX fixture", parsed)
+
+            // Point lookup: one function's authority, by name.
+            match parsed
+                Err(_) -> ()
+                Ok(doc) ->
+                    stdio.println("--- lookup ---")
+                    match find_by_name(doc, "load_name")
+                        None    -> stdio.println("load_name: not in the SBOM")
+                        Some(c) ->
+                            stdio.println("load_name declares { ${join(declared_capabilities(c))} }")
+                            match first_property(c, "capa:pos")
+                                None      -> ()
+                                Some(pos) -> stdio.println("load_name defined at ${pos}")
+                    stdio.println("")
+
+    // The typed error channel: three failure shapes, no crash.
+    show_parsed(stdio, "not JSON at all", parse_cyclonedx("flagrantly not json"))
+    show_parsed(stdio, "JSON, but not an SBOM", parse_cyclonedx("{\"hello\": \"world\"}"))
+    show_parsed(stdio, "SBOM, but malformed", parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"components\": 7}"))

@@ -1,0 +1,435 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:20545860-a402-58e2-ae96-a4927ab13bdc",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-10T19:02:57Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "capa",
+          "version": "1.0.0"
+        }
+      ]
+    },
+    "component": {
+      "bom-ref": "capa:program:demo_program.capa",
+      "type": "application",
+      "name": "demo_program.capa",
+      "version": "1.0.0",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": []
+    },
+    "properties": [
+      {
+        "name": "capa:schema_version",
+        "value": "1"
+      },
+      {
+        "name": "capa:summary:total_functions",
+        "value": "4"
+      },
+      {
+        "name": "capa:summary:functions_with_capabilities",
+        "value": "3"
+      },
+      {
+        "name": "capa:summary:functions_with_attributes",
+        "value": "0"
+      },
+      {
+        "name": "capa:summary:functions_crossing_unsafe",
+        "value": "0"
+      }
+    ]
+  },
+  "components": [
+    {
+      "bom-ref": "capa:builtin:demo_program.capa:Fs",
+      "type": "library",
+      "name": "Fs",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "builtin-capability"
+        }
+      ]
+    },
+    {
+      "bom-ref": "capa:builtin:demo_program.capa:Stdio",
+      "type": "library",
+      "name": "Stdio",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "builtin-capability"
+        }
+      ]
+    },
+    {
+      "bom-ref": "capa:fn:demo_program.capa:build_greeting",
+      "type": "library",
+      "name": "build_greeting",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "function"
+        },
+        {
+          "name": "capa:pos",
+          "value": "demo_program.capa:20:1"
+        },
+        {
+          "name": "capa:return_type",
+          "value": "Greeting"
+        },
+        {
+          "name": "capa:has_unsafe",
+          "value": "false"
+        },
+        {
+          "name": "capa:is_pub",
+          "value": "false"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Clock"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Db"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Env"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Net"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Proc"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Random"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Unsafe"
+        },
+        {
+          "name": "capa:param",
+          "value": "who: String"
+        }
+      ]
+    },
+    {
+      "bom-ref": "capa:fn:demo_program.capa:emit",
+      "type": "library",
+      "name": "emit",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "function"
+        },
+        {
+          "name": "capa:pos",
+          "value": "demo_program.capa:23:1"
+        },
+        {
+          "name": "capa:return_type",
+          "value": "()"
+        },
+        {
+          "name": "capa:has_unsafe",
+          "value": "false"
+        },
+        {
+          "name": "capa:is_pub",
+          "value": "false"
+        },
+        {
+          "name": "capa:declared_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:transitively_reachable_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Clock"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Db"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Env"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Net"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Proc"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Random"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Unsafe"
+        },
+        {
+          "name": "capa:param",
+          "value": "stdio: Stdio [cap]"
+        },
+        {
+          "name": "capa:param",
+          "value": "g: Greeting"
+        }
+      ]
+    },
+    {
+      "bom-ref": "capa:fn:demo_program.capa:load_name",
+      "type": "library",
+      "name": "load_name",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "function"
+        },
+        {
+          "name": "capa:pos",
+          "value": "demo_program.capa:26:1"
+        },
+        {
+          "name": "capa:return_type",
+          "value": "String"
+        },
+        {
+          "name": "capa:has_unsafe",
+          "value": "false"
+        },
+        {
+          "name": "capa:is_pub",
+          "value": "false"
+        },
+        {
+          "name": "capa:declared_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:transitively_reachable_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Clock"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Db"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Env"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Net"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Proc"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Random"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Unsafe"
+        },
+        {
+          "name": "capa:param",
+          "value": "fs: Fs [cap]"
+        },
+        {
+          "name": "capa:param",
+          "value": "path: String"
+        }
+      ]
+    },
+    {
+      "bom-ref": "capa:fn:demo_program.capa:main",
+      "type": "library",
+      "name": "main",
+      "scope": "required",
+      "supplier": {
+        "name": "capa-build"
+      },
+      "licenses": [],
+      "properties": [
+        {
+          "name": "capa:kind",
+          "value": "function"
+        },
+        {
+          "name": "capa:pos",
+          "value": "demo_program.capa:31:1"
+        },
+        {
+          "name": "capa:return_type",
+          "value": "()"
+        },
+        {
+          "name": "capa:has_unsafe",
+          "value": "false"
+        },
+        {
+          "name": "capa:is_pub",
+          "value": "false"
+        },
+        {
+          "name": "capa:declared_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:declared_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:transitively_reachable_capability",
+          "value": "Fs"
+        },
+        {
+          "name": "capa:transitively_reachable_capability",
+          "value": "Stdio"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Clock"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Db"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Env"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Net"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Proc"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Random"
+        },
+        {
+          "name": "capa:provably_excluded_capability",
+          "value": "Unsafe"
+        },
+        {
+          "name": "capa:param",
+          "value": "stdio: Stdio [cap]"
+        },
+        {
+          "name": "capa:param",
+          "value": "fs: Fs [cap]"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "capa:program:demo_program.capa",
+      "dependsOn": [
+        "capa:builtin:demo_program.capa:Fs",
+        "capa:builtin:demo_program.capa:Stdio",
+        "capa:fn:demo_program.capa:build_greeting",
+        "capa:fn:demo_program.capa:emit",
+        "capa:fn:demo_program.capa:load_name",
+        "capa:fn:demo_program.capa:main"
+      ]
+    },
+    {
+      "ref": "capa:fn:demo_program.capa:emit",
+      "dependsOn": [
+        "capa:builtin:demo_program.capa:Stdio"
+      ]
+    },
+    {
+      "ref": "capa:fn:demo_program.capa:load_name",
+      "dependsOn": [
+        "capa:builtin:demo_program.capa:Fs"
+      ]
+    },
+    {
+      "ref": "capa:fn:demo_program.capa:main",
+      "dependsOn": [
+        "capa:builtin:demo_program.capa:Fs",
+        "capa:builtin:demo_program.capa:Stdio",
+        "capa:fn:demo_program.capa:load_name",
+        "capa:fn:demo_program.capa:emit",
+        "capa:fn:demo_program.capa:build_greeting"
+      ]
+    }
+  ]
+}
