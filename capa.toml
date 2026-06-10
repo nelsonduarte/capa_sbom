@@ -5,4 +5,4 @@
 [package]
 name = "capa_sbom"
 version = "0.1.0"
-capa = ">=0.8.4"
+capa = ">=1.0.0"
