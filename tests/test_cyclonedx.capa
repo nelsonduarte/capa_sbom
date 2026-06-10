@@ -1,0 +1,102 @@
+// tests/test_cyclonedx.capa
+//
+// Parses the real compiler-emitted CycloneDX fixture
+// (data/demo.cdx.json, produced from data/demo_program.capa)
+// and asserts on document identity, components, capa:*
+// capability facts, relations, and the summary.
+//
+// Run from the repository root:
+//
+//     CAPA_PATH=.. capa --run tests/test_cyclonedx.capa
+
+import testutil
+import capa_sbom.model
+import capa_sbom.cyclonedx
+import capa_sbom.query
+
+fun run(stdio: Stdio, text: String) -> Int
+    var f = 0
+
+    let doc = match parse_cyclonedx(text)
+        Ok(d)  -> d
+        Err(e) ->
+            stdio.println("FAIL parse: ${error_message(e)}")
+            return 1
+
+    // Document identity
+    f = check_eq(stdio, f, "format", format_name(doc.format), "CycloneDX")
+    f = check_eq(stdio, f, "spec_version", doc.spec_version, "1.5")
+    f = check_eq(stdio, f, "subject", doc.subject, "demo_program.capa")
+
+    // Components: 2 builtin capabilities + 4 functions
+    f = check(stdio, f, "component_count", doc.components.length() == 6)
+    let fns = functions(doc)
+    f = check(stdio, f, "function_count", fns.length() == 4)
+
+    // capa:* capability facts per function
+    f = check_eq(stdio, f, "caps(build_greeting)", caps_of(doc, "build_greeting"), "")
+    f = check_eq(stdio, f, "caps(emit)", caps_of(doc, "emit"), "Stdio")
+    f = check_eq(stdio, f, "caps(load_name)", caps_of(doc, "load_name"), "Fs")
+    f = check_eq(stdio, f, "caps(main)", caps_of(doc, "main"), "Stdio, Fs")
+
+    // Reachability is a superset of declaration
+    match find_by_name(doc, "main")
+        None    -> f = check(stdio, f, "main present", false)
+        Some(c) ->
+            let reach = reachable_capabilities(c)
+            f = check(stdio, f, "main reaches Fs", reach.contains("Fs"))
+            f = check(stdio, f, "main reaches Stdio", reach.contains("Stdio"))
+            f = check_eq(stdio, f, "main ref_id", c.ref_id, "capa:fn:demo_program.capa:main")
+            f = check_eq(stdio, f, "main kind", component_kind(c), "function")
+
+    // Point metadata: source position travels with the function
+    match find_by_name(doc, "load_name")
+        None    -> f = check(stdio, f, "load_name present", false)
+        Some(c) ->
+            let pos = match first_property(c, "capa:pos")
+                Some(p) -> p
+                None    -> "<missing>"
+            f = check_eq(stdio, f, "load_name pos", pos, "demo_program.capa:26:1")
+
+    // Builtin capability components are marked as such
+    match find_by_name(doc, "Fs")
+        None    -> f = check(stdio, f, "Fs component present", false)
+        Some(c) -> f = check_eq(stdio, f, "Fs kind", component_kind(c), "builtin-capability")
+
+    // capability_map mirrors the per-function queries
+    let cmap = capability_map(doc)
+    let main_caps = match cmap.get("main")
+        Some(xs) -> joined(xs)
+        None     -> "<missing>"
+    f = check_eq(stdio, f, "capability_map(main)", main_caps, "Stdio, Fs")
+
+    // Relations: the dep-graph edge from main to the Fs builtin
+    f = check(stdio, f, "relation main->Fs", has_relation(doc,
+        "capa:fn:demo_program.capa:main", "depends-on",
+        "capa:builtin:demo_program.capa:Fs"))
+    f = check(stdio, f, "relation_count", doc.relations.length() == 13)
+
+    // Summary
+    let s = summarize(doc)
+    f = check(stdio, f, "summary.component_count", s.component_count == 6)
+    f = check(stdio, f, "summary.function_count", s.function_count == 4)
+    f = check(stdio, f, "summary.functions_with_capabilities", s.functions_with_capabilities == 3)
+    f = check(stdio, f, "summary.relation_count", s.relation_count == 13)
+
+    return f
+
+fun caps_of(doc: Document, name: String) -> String
+    return match find_by_name(doc, name)
+        None    -> "<missing>"
+        Some(c) -> joined(declared_capabilities(c))
+
+fun has_relation(doc: Document, from_ref: String, kind: String, to_ref: String) -> Bool
+    for r in doc.relations
+        if r.from_ref == from_ref and r.kind == kind and r.to_ref == to_ref
+            return true
+    return false
+
+fun main(stdio: Stdio, fs: Fs)
+    match fs.read("data/demo.cdx.json")
+        Err(e)   -> stdio.eprintln("cannot read fixture: ${e}")
+        Ok(text) -> finish(stdio, run(stdio, text))

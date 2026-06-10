@@ -1,0 +1,94 @@
+// tests/test_spdx.capa
+//
+// Parses the real compiler-emitted SPDX 2.3 fixture
+// (data/demo.spdx.json, produced from data/demo_program.capa)
+// and asserts that the format-agnostic model carries the same
+// capability facts the CycloneDX test checks: the annotation
+// comments `capa:x=y` must surface as Properties.
+//
+// Run from the repository root:
+//
+//     CAPA_PATH=.. capa --run tests/test_spdx.capa
+
+import testutil
+import capa_sbom.model
+import capa_sbom.spdx
+import capa_sbom.query
+
+fun run(stdio: Stdio, text: String) -> Int
+    var f = 0
+
+    let doc = match parse_spdx(text)
+        Ok(d)  -> d
+        Err(e) ->
+            stdio.println("FAIL parse: ${error_message(e)}")
+            return 1
+
+    // Document identity
+    f = check_eq(stdio, f, "format", format_name(doc.format), "SPDX")
+    f = check_eq(stdio, f, "spec_version", doc.spec_version, "SPDX-2.3")
+    f = check_eq(stdio, f, "subject", doc.subject, "demo_program.capa")
+
+    // Packages: 1 program + 2 builtin capabilities + 4 functions
+    f = check(stdio, f, "component_count", doc.components.length() == 7)
+    f = check(stdio, f, "function_count", functions(doc).length() == 4)
+
+    // The document-level package keeps its versionInfo
+    match find_by_name(doc, "demo_program.capa")
+        None    -> f = check(stdio, f, "program package present", false)
+        Some(c) ->
+            f = check_eq(stdio, f, "program version", c.version, "1.0.0")
+            f = check_eq(stdio, f, "program SPDXID", c.ref_id, "SPDXRef-Package-demo-program.capa")
+
+    // capa:* facts decoded from annotation comments
+    f = check_eq(stdio, f, "caps(build_greeting)", caps_of(doc, "build_greeting"), "")
+    f = check_eq(stdio, f, "caps(emit)", caps_of(doc, "emit"), "Stdio")
+    f = check_eq(stdio, f, "caps(load_name)", caps_of(doc, "load_name"), "Fs")
+    f = check_eq(stdio, f, "caps(main)", caps_of(doc, "main"), "Stdio, Fs")
+
+    match find_by_name(doc, "main")
+        None    -> f = check(stdio, f, "main present", false)
+        Some(c) ->
+            f = check_eq(stdio, f, "main kind", component_kind(c), "function")
+            f = check_eq(stdio, f, "main SPDXID", c.ref_id, "SPDXRef-Fn-demo-program.capa-main")
+            // The value side of an annotation pair keeps any
+            // '=' beyond the first; return type "()" survives.
+            let ret = match first_property(c, "capa:return_type")
+                Some(r) -> r
+                None    -> "<missing>"
+            f = check_eq(stdio, f, "main return_type", ret, "()")
+            f = check(stdio, f, "main reaches Fs", reachable_capabilities(c).contains("Fs"))
+
+    // Relations: relationshipType is preserved verbatim
+    f = check(stdio, f, "relation_count", doc.relations.length() == 14)
+    f = check(stdio, f, "DESCRIBES edge", has_relation(doc,
+        "SPDXRef-DOCUMENT", "DESCRIBES", "SPDXRef-Package-demo-program.capa"))
+    f = check(stdio, f, "CONTAINS edge", has_relation(doc,
+        "SPDXRef-Package-demo-program.capa", "CONTAINS",
+        "SPDXRef-Fn-demo-program.capa-load-name"))
+    f = check(stdio, f, "DEPENDS_ON edge", has_relation(doc,
+        "SPDXRef-Package-demo-program.capa", "DEPENDS_ON",
+        "SPDXRef-Builtin-demo-program.capa-Fs"))
+
+    // Summary agrees with the CycloneDX view of the same program
+    let s = summarize(doc)
+    f = check(stdio, f, "summary.function_count", s.function_count == 4)
+    f = check(stdio, f, "summary.functions_with_capabilities", s.functions_with_capabilities == 3)
+
+    return f
+
+fun caps_of(doc: Document, name: String) -> String
+    return match find_by_name(doc, name)
+        None    -> "<missing>"
+        Some(c) -> joined(declared_capabilities(c))
+
+fun has_relation(doc: Document, from_ref: String, kind: String, to_ref: String) -> Bool
+    for r in doc.relations
+        if r.from_ref == from_ref and r.kind == kind and r.to_ref == to_ref
+            return true
+    return false
+
+fun main(stdio: Stdio, fs: Fs)
+    match fs.read("data/demo.spdx.json")
+        Err(e)   -> stdio.eprintln("cannot read fixture: ${e}")
+        Ok(text) -> finish(stdio, run(stdio, text))

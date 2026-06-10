@@ -1,0 +1,209 @@
+// tests/test_edge_cases.capa
+//
+// Error-channel and absence coverage, on inline documents (no
+// Fs needed; this test program is Stdio-only). One block per
+// failure shape:
+//   - invalid JSON            -> InvalidJson
+//   - valid JSON, not an SBOM -> NotSbom
+//   - right kind, wrong shape -> Malformed
+// plus the lenient-absence cases (no components, no capa:*
+// properties) and the generic-SBOM queries (purl lookups on a
+// third-party CycloneDX document).
+//
+// Run from the repository root:
+//
+//     CAPA_PATH=.. capa --run tests/test_edge_cases.capa
+
+import testutil
+import capa_sbom.model
+import capa_sbom.cyclonedx
+import capa_sbom.spdx
+import capa_sbom.query
+
+// Variant probes: tests assert on the error *variant*, never on
+// the InvalidJson message text (it comes from the host JSON
+// engine and differs between backends).
+fun is_invalid_json(r: Result<Document, SbomError>) -> Bool
+    return match r
+        Err(InvalidJson(_)) -> true
+        _                   -> false
+
+fun is_not_sbom(r: Result<Document, SbomError>) -> Bool
+    return match r
+        Err(NotSbom(_)) -> true
+        _               -> false
+
+fun is_malformed(r: Result<Document, SbomError>) -> Bool
+    return match r
+        Err(Malformed(_)) -> true
+        _                 -> false
+
+fun check_errors(stdio: Stdio, f0: Int) -> Int
+    var f = f0
+
+    // Not JSON at all
+    f = check(stdio, f, "cdx: garbage is InvalidJson",
+        is_invalid_json(parse_cyclonedx("definitely not json")))
+    f = check(stdio, f, "spdx: garbage is InvalidJson",
+        is_invalid_json(parse_spdx("{truncated")))
+
+    // Valid JSON that is not the expected document kind
+    f = check(stdio, f, "cdx: plain object is NotSbom",
+        is_not_sbom(parse_cyclonedx("{\"hello\": \"world\"}")))
+    f = check(stdio, f, "cdx: array root is NotSbom",
+        is_not_sbom(parse_cyclonedx("[1, 2, 3]")))
+    f = check(stdio, f, "cdx: wrong bomFormat is NotSbom",
+        is_not_sbom(parse_cyclonedx("{\"bomFormat\": \"SPDX\"}")))
+    f = check(stdio, f, "spdx: plain object is NotSbom",
+        is_not_sbom(parse_spdx("{\"hello\": \"world\"}")))
+    f = check(stdio, f, "spdx: bad spdxVersion is NotSbom",
+        is_not_sbom(parse_spdx("{\"spdxVersion\": \"2.3\"}")))
+    f = check(stdio, f, "spdx: cyclonedx doc is NotSbom",
+        is_not_sbom(parse_spdx("{\"bomFormat\": \"CycloneDX\"}")))
+
+    // Right kind, wrong shape
+    f = check(stdio, f, "cdx: non-array components is Malformed",
+        is_malformed(parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"components\": 7}")))
+    f = check(stdio, f, "cdx: non-object component is Malformed",
+        is_malformed(parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"components\": [3]}")))
+    f = check(stdio, f, "cdx: non-string name is Malformed",
+        is_malformed(parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"components\": [{\"name\": 1}]}")))
+    f = check(stdio, f, "cdx: non-string dependsOn entry is Malformed",
+        is_malformed(parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"dependencies\": [{\"ref\": \"a\", \"dependsOn\": [4]}]}")))
+    f = check(stdio, f, "spdx: non-array packages is Malformed",
+        is_malformed(parse_spdx("{\"spdxVersion\": \"SPDX-2.3\", \"packages\": {}}")))
+    f = check(stdio, f, "spdx: non-object relationship is Malformed",
+        is_malformed(parse_spdx("{\"spdxVersion\": \"SPDX-2.3\", \"relationships\": [\"x\"]}")))
+
+    return f
+
+fun check_absence(stdio: Stdio, f0: Int) -> Int
+    var f = f0
+
+    // A minimal document with no components at all parses fine
+    let bare = match parse_cyclonedx("{\"bomFormat\": \"CycloneDX\", \"specVersion\": \"1.5\"}")
+        Ok(d)  -> d
+        Err(_) -> return check(stdio, f, "cdx: bare document parses", false)
+    f = check(stdio, f, "cdx: bare document parses", true)
+    f = check(stdio, f, "cdx: bare has no components", bare.components.is_empty())
+    f = check(stdio, f, "cdx: bare has no relations", bare.relations.is_empty())
+    f = check_eq(stdio, f, "cdx: bare subject empty", bare.subject, "")
+    let s = summarize(bare)
+    f = check(stdio, f, "cdx: bare summary zeroed",
+        s.component_count == 0 and s.function_count == 0 and s.functions_with_capabilities == 0 and s.relation_count == 0)
+    let missing = match find_by_name(bare, "anything")
+        None    -> true
+        Some(_) -> false
+    f = check(stdio, f, "cdx: lookup misses on bare", missing)
+
+    let bare_spdx = match parse_spdx("{\"spdxVersion\": \"SPDX-2.3\", \"name\": \"empty-doc\"}")
+        Ok(d)  -> d
+        Err(_) -> return check(stdio, f, "spdx: bare document parses", false)
+    f = check(stdio, f, "spdx: bare document parses", true)
+    f = check(stdio, f, "spdx: bare has no components", bare_spdx.components.is_empty())
+    f = check_eq(stdio, f, "spdx: bare subject", bare_spdx.subject, "empty-doc")
+
+    return f
+
+// A third-party CycloneDX document (syft-style): purls, no
+// capa:* properties anywhere.
+fun generic_cyclonedx() -> String
+    var s = "{\"bomFormat\": \"CycloneDX\", \"specVersion\": \"1.5\","
+    s = s + "\"metadata\": {\"component\": {\"name\": \"billing-api\"}},"
+    s = s + "\"components\": ["
+    s = s + "{\"type\": \"library\", \"name\": \"requests\", \"version\": \"2.31.0\", \"purl\": \"pkg:pypi/requests@2.31.0\"},"
+    s = s + "{\"type\": \"library\", \"name\": \"urllib3\", \"version\": \"1.26.18\", \"purl\": \"pkg:pypi/urllib3@1.26.18\"},"
+    s = s + "{\"type\": \"library\", \"name\": \"local-helper\"}"
+    s = s + "]}"
+    return s
+
+fun check_generic(stdio: Stdio, f0: Int) -> Int
+    var f = f0
+
+    let doc = match parse_cyclonedx(generic_cyclonedx())
+        Ok(d)  -> d
+        Err(_) -> return check(stdio, f, "generic: parses", false)
+    f = check(stdio, f, "generic: parses", true)
+    f = check_eq(stdio, f, "generic: subject", doc.subject, "billing-api")
+    f = check(stdio, f, "generic: component_count", doc.components.length() == 3)
+
+    // capa:* absent: no functions, no capability declarations
+    f = check(stdio, f, "generic: no function components", functions(doc).is_empty())
+    f = check(stdio, f, "generic: capability_map empty", capability_map(doc).is_empty())
+    match find_by_name(doc, "requests")
+        None    -> f = check(stdio, f, "generic: requests present", false)
+        Some(c) ->
+            f = check(stdio, f, "generic: no declared caps", declared_capabilities(c).is_empty())
+            f = check_eq(stdio, f, "generic: kind empty", component_kind(c), "")
+            f = check_eq(stdio, f, "generic: version", c.version, "2.31.0")
+
+    // purl lookups: hit, miss, and the no-purl component is
+    // never matched by an empty-string probe
+    let hit = match find_by_purl(doc, "pkg:pypi/urllib3@1.26.18")
+        Some(c) -> c.name == "urllib3"
+        None    -> false
+    f = check(stdio, f, "generic: find_by_purl hit", hit)
+    let miss = match find_by_purl(doc, "pkg:pypi/flask@2.3.0")
+        None    -> true
+        Some(_) -> false
+    f = check(stdio, f, "generic: find_by_purl miss", miss)
+    let empty_probe = match find_by_purl(doc, "")
+        None    -> true
+        Some(_) -> false
+    f = check(stdio, f, "generic: empty purl never matches", empty_probe)
+
+    let s = summarize(doc)
+    f = check(stdio, f, "generic: summary has no functions",
+        s.component_count == 3 and s.function_count == 0 and s.functions_with_capabilities == 0)
+
+    return f
+
+// SPDX annotation-comment decoding details.
+fun spdx_annotations() -> String
+    var s = "{\"spdxVersion\": \"SPDX-2.3\", \"name\": \"ann-doc\", \"packages\": [{"
+    s = s + "\"SPDXID\": \"SPDXRef-x\", \"name\": \"x\","
+    s = s + "\"externalRefs\": ["
+    s = s + "{\"referenceType\": \"cpe23Type\", \"referenceLocator\": \"cpe:2.3:a:x\"},"
+    s = s + "{\"referenceType\": \"purl\", \"referenceLocator\": \"pkg:pypi/x@1.0\"}"
+    s = s + "],"
+    s = s + "\"annotations\": ["
+    s = s + "{\"comment\": \"free-form reviewer note, no pair here\"},"
+    s = s + "{\"comment\": \"capa:return_type=Result<Int, String>\"},"
+    s = s + "{\"comment\": \"capa:param=eq: String = sign\"}"
+    s = s + "]}]}"
+    return s
+
+fun check_spdx_decoding(stdio: Stdio, f0: Int) -> Int
+    var f = f0
+
+    let doc = match parse_spdx(spdx_annotations())
+        Ok(d)  -> d
+        Err(_) -> return check(stdio, f, "ann: parses", false)
+    f = check(stdio, f, "ann: parses", true)
+
+    match find_by_name(doc, "x")
+        None    -> f = check(stdio, f, "ann: package present", false)
+        Some(c) ->
+            // purl picked from the right externalRefs entry
+            f = check_eq(stdio, f, "ann: purl from externalRefs", c.purl, "pkg:pypi/x@1.0")
+            // prose comment skipped; only '=' pairs survive
+            f = check(stdio, f, "ann: prose comment skipped", c.properties.length() == 2)
+            // the value keeps every '=' beyond the first
+            let param = match first_property(c, "capa:param")
+                Some(v) -> v
+                None    -> "<missing>"
+            f = check_eq(stdio, f, "ann: value keeps later '='", param, "eq: String = sign")
+            let ret = match first_property(c, "capa:return_type")
+                Some(v) -> v
+                None    -> "<missing>"
+            f = check_eq(stdio, f, "ann: pair decoded", ret, "Result<Int, String>")
+
+    return f
+
+fun main(stdio: Stdio)
+    var f = 0
+    f = check_errors(stdio, f)
+    f = check_absence(stdio, f)
+    f = check_generic(stdio, f)
+    f = check_spdx_decoding(stdio, f)
+    finish(stdio, f)

@@ -1,0 +1,39 @@
+// tests/testutil.capa
+//
+// Minimal assertion helpers shared by the test programs. Each
+// test program is a plain Capa program with deterministic
+// output: one "ok <name>" / "FAIL <name>" line per assertion
+// and a final RESULT line, identical on both backends.
+
+pub fun check(stdio: Stdio, failures: Int, name: String, cond: Bool) -> Int
+    if cond
+        stdio.println("ok ${name}")
+        return failures
+    stdio.println("FAIL ${name}")
+    return failures + 1
+
+pub fun check_eq(stdio: Stdio, failures: Int, name: String, got: String, want: String) -> Int
+    if got == want
+        stdio.println("ok ${name}")
+        return failures
+    stdio.println("FAIL ${name}: got '${got}', want '${want}'")
+    return failures + 1
+
+// Render a list as "a, b, c" so whole lists can be compared
+// through check_eq with readable failure output.
+pub fun joined(xs: List<String>) -> String
+    var out = ""
+    var first = true
+    for x in xs
+        if first
+            out = x
+            first = false
+        else
+            out = "${out}, ${x}"
+    return out
+
+pub fun finish(stdio: Stdio, failures: Int)
+    if failures == 0
+        stdio.println("RESULT: all tests passed")
+    else
+        stdio.println("RESULT: ${failures} failure(s)")
